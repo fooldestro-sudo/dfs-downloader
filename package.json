@@ -1,0 +1,17 @@
+{
+  "name": "downfshtool",
+  "version": "1.0.0",
+  "description": "Multi-platform video downloader by Mustafa Zakaria",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "npx live-server --port=8080 --open=/index.html"
+  },
+  "keywords": ["video", "downloader", "yt-dlp"],
+  "author": "Mustafa Zakaria",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}
