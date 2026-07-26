@@ -1,7 +1,7 @@
 {
-  "name": "downfshtool",
+  "name": "dfs",
   "version": "1.0.0",
-  "description": "Multi-platform video downloader by Mustafa Zakaria",
+  "description": "DFS — Downloading For Society | Multi-platform video downloader",
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",

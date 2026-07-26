@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DownFSH Tool — Multi-Platform Video Downloader</title>
+  <title>DFS — Downloading For Society</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -14,45 +14,100 @@
   <div class="bg-grid"></div>
 
   <header class="header">
-    <div class="logo">
-      <span class="logo-icon">⬇</span>
-      <span class="logo-text">DownFSH Tool</span>
+    <div class="header-row">
+      <div class="logo">
+        <span class="logo-icon">⬇</span>
+        <span class="logo-text">DFS</span>
+      </div>
+      <button id="themeToggle" class="theme-toggle" title="Toggle dark/light mode" aria-label="Toggle theme">
+        <span class="icon-sun">☀</span>
+        <span class="icon-moon">☾</span>
+      </button>
     </div>
-    <p class="tagline">Download videos from any platform — all at once</p>
+    <p class="tagline">Downloading For Society — free video downloads from any platform</p>
   </header>
 
   <main class="container">
-    <section class="card input-card">
-      <div class="card-header">
-        <h2>Video Links</h2>
-        <button type="button" id="addLinkBtn" class="btn btn-ghost">
-          <span>+</span> Add Link
-        </button>
-      </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="single">Single Downloads</button>
+      <button class="tab" data-tab="playlist">Playlist Downloads</button>
+    </div>
 
-      <div id="linksContainer" class="links-container">
-        <div class="link-row">
-          <span class="link-number">1</span>
-          <input type="url" class="link-input" placeholder="Paste video URL (YouTube, TikTok, Instagram, Twitter/X, Facebook…)" />
-          <button type="button" class="btn-icon remove-btn" title="Remove" aria-label="Remove link">×</button>
+    <!-- SINGLE DOWNLOAD TAB -->
+    <section class="tab-content active" id="tab-single">
+      <section class="card input-card">
+        <div class="card-header">
+          <h2>Video Links</h2>
+          <button type="button" id="addLinkBtn" class="btn btn-ghost">
+            <span>+</span> Add Link
+          </button>
         </div>
-      </div>
 
-      <div class="actions">
-        <button type="button" id="downloadAllBtn" class="btn btn-primary">
-          <span class="btn-icon-download">↓</span>
-          Download All
-        </button>
-        <button type="button" id="clearAllBtn" class="btn btn-secondary">Clear All</button>
-      </div>
+        <div id="linksContainer" class="links-container">
+          <div class="link-row">
+            <span class="link-number">1</span>
+            <input type="url" class="link-input" placeholder="Paste video URL (YouTube, TikTok, Instagram, Twitter/X, Facebook…)" />
+            <button type="button" class="btn-icon remove-btn" title="Remove" aria-label="Remove link">×</button>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="button" id="downloadAllBtn" class="btn btn-primary">
+            <span class="btn-icon-download">↓</span>
+            Download All
+          </button>
+          <button type="button" id="clearAllBtn" class="btn btn-secondary">Clear All</button>
+        </div>
+      </section>
+
+      <section class="card status-card" id="statusCard" hidden>
+        <div class="card-header">
+          <h2>Download Progress</h2>
+          <span id="overallProgress" class="progress-badge">0 / 0</span>
+        </div>
+        <div id="statusList" class="status-list"></div>
+      </section>
     </section>
 
-    <section class="card status-card" id="statusCard" hidden>
-      <div class="card-header">
-        <h2>Download Progress</h2>
-        <span id="overallProgress" class="progress-badge">0 / 0</span>
-      </div>
-      <div id="statusList" class="status-list"></div>
+    <!-- PLAYLIST DOWNLOAD TAB -->
+    <section class="tab-content" id="tab-playlist">
+      <section class="card input-card">
+        <div class="card-header">
+          <h2>Playlist Download</h2>
+        </div>
+
+        <div class="playlist-input-group">
+          <input type="url" id="playlistUrl" class="link-input playlist-url-input" placeholder="Paste playlist URL (YouTube, Vimeo, etc.)" />
+          <button type="button" id="fetchPlaylistBtn" class="btn btn-primary">
+            <span class="btn-icon-download">↻</span>
+            Fetch Playlist
+          </button>
+        </div>
+
+        <div id="playlistInfo" class="playlist-info" hidden>
+          <div class="playlist-meta">
+            <h3 id="playlistTitle">Playlist Title</h3>
+            <p id="playlistCount">0 videos</p>
+          </div>
+          <div id="playlistItems" class="playlist-items"></div>
+
+          <div class="playlist-actions">
+            <button type="button" id="downloadPlaylistBtn" class="btn btn-primary">
+              <span class="btn-icon-download">↓</span>
+              Download All
+            </button>
+            <button type="button" id="clearPlaylistBtn" class="btn btn-secondary">Clear</button>
+          </div>
+        </div>
+
+        <div class="playlist-status-card card" id="playlistStatusCard" hidden>
+          <div class="card-header">
+            <h2>Playlist Progress</h2>
+            <span id="playlistOverallProgress" class="progress-badge">0 / 0</span>
+          </div>
+          <div id="playlistStatusList" class="status-list"></div>
+        </div>
+      </section>
     </section>
 
     <section class="platforms">
@@ -70,7 +125,7 @@
   </main>
 
   <footer class="footer">
-    <p>© Rights Reserved — <strong>Mustafa Zakaria</strong></p>
+    <p>© Rights Reserved — <strong>Mustafa Zakaria</strong> &middot; DFS — Downloading For Society</p>
   </footer>
 
   <div id="toast" class="toast" role="alert" aria-live="polite"></div>

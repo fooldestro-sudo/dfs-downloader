@@ -1,5 +1,6 @@
 const API_BASE = 'http://localhost:3001';
 
+/* ── DOM REFS ── */
 const linksContainer = document.getElementById('linksContainer');
 const addLinkBtn = document.getElementById('addLinkBtn');
 const downloadAllBtn = document.getElementById('downloadAllBtn');
@@ -8,9 +9,54 @@ const statusCard = document.getElementById('statusCard');
 const statusList = document.getElementById('statusList');
 const overallProgress = document.getElementById('overallProgress');
 const toast = document.getElementById('toast');
+const themeToggle = document.getElementById('themeToggle');
+
+/* Playlist DOM */
+const playlistUrl = document.getElementById('playlistUrl');
+const fetchPlaylistBtn = document.getElementById('fetchPlaylistBtn');
+const playlistInfo = document.getElementById('playlistInfo');
+const playlistTitle = document.getElementById('playlistTitle');
+const playlistCount = document.getElementById('playlistCount');
+const playlistItems = document.getElementById('playlistItems');
+const downloadPlaylistBtn = document.getElementById('downloadPlaylistBtn');
+const clearPlaylistBtn = document.getElementById('clearPlaylistBtn');
+const playlistStatusCard = document.getElementById('playlistStatusCard');
+const playlistStatusList = document.getElementById('playlistStatusList');
+const playlistOverallProgress = document.getElementById('playlistOverallProgress');
 
 let isDownloading = false;
+let currentPlaylistUrls = [];
 
+/* ── THEME TOGGLE ── */
+function getPreferredTheme() {
+  const saved = localStorage.getItem('dfs-theme');
+  if (saved) return saved;
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('dfs-theme', theme);
+}
+
+setTheme(getPreferredTheme());
+
+themeToggle.addEventListener('click', () => {
+  const current = document.documentElement.getAttribute('data-theme');
+  setTheme(current === 'dark' ? 'light' : 'dark');
+});
+
+/* ── TABS ── */
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+/* ── TOAST ── */
 function showToast(message, type = 'success') {
   toast.textContent = message;
   toast.className = `toast show ${type}`;
@@ -20,6 +66,7 @@ function showToast(message, type = 'success') {
   }, 4000);
 }
 
+/* ── SINGLE DOWNLOAD: LINK MANAGEMENT ── */
 function renumberLinks() {
   linksContainer.querySelectorAll('.link-row').forEach((row, index) => {
     row.querySelector('.link-number').textContent = index + 1;
@@ -60,7 +107,8 @@ function getLinks() {
     .filter(Boolean);
 }
 
-function createStatusItem(url, index) {
+/* ── SINGLE DOWNLOAD: STATUS ── */
+function createStatusItem(url, index, container) {
   const item = document.createElement('div');
   item.className = 'status-item';
   item.dataset.index = index;
@@ -75,8 +123,8 @@ function createStatusItem(url, index) {
   return item;
 }
 
-function updateStatusItem(index, { status, message, progress }) {
-  const item = statusList.querySelector(`[data-index="${index}"]`);
+function updateStatusItem(listEl, index, { status, message, progress }) {
+  const item = listEl.querySelector(`[data-index="${index}"]`);
   if (!item) return;
 
   const indicator = item.querySelector('.status-indicator');
@@ -91,6 +139,7 @@ function updateStatusItem(index, { status, message, progress }) {
   }
 }
 
+/* ── BACKEND CHECK ── */
 async function checkBackend() {
   try {
     const res = await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(3000) });
@@ -100,6 +149,7 @@ async function checkBackend() {
   }
 }
 
+/* ── SINGLE DOWNLOAD ── */
 async function downloadAll() {
   const links = getLinks();
 
@@ -124,7 +174,7 @@ async function downloadAll() {
   overallProgress.textContent = `0 / ${links.length}`;
 
   links.forEach((url, index) => {
-    statusList.appendChild(createStatusItem(url, index));
+    statusList.appendChild(createStatusItem(url, index, statusList));
   });
 
   let completed = 0;
@@ -157,7 +207,7 @@ async function downloadAll() {
         if (!line.startsWith('data: ')) continue;
         try {
           const event = JSON.parse(line.slice(6));
-          handleDownloadEvent(event, links.length, () => {
+          handleDownloadEvent(statusList, event, links.length, () => {
             completed++;
             overallProgress.textContent = `${completed} / ${links.length}`;
           });
@@ -169,7 +219,7 @@ async function downloadAll() {
   } catch (err) {
     showToast(err.message || 'Something went wrong.', 'error');
     links.forEach((_, index) => {
-      updateStatusItem(index, { status: 'error', message: err.message || 'Failed' });
+      updateStatusItem(statusList, index, { status: 'error', message: err.message || 'Failed' });
     });
   } finally {
     isDownloading = false;
@@ -179,22 +229,22 @@ async function downloadAll() {
   }
 }
 
-function handleDownloadEvent(event, total, onComplete) {
+function handleDownloadEvent(listEl, event, total, onComplete) {
   const { type, index, message, progress, title } = event;
 
   switch (type) {
     case 'start':
-      updateStatusItem(index, { status: 'downloading', message: 'Starting download…', progress: 5 });
+      updateStatusItem(listEl, index, { status: 'downloading', message: 'Starting download…', progress: 5 });
       break;
     case 'progress':
-      updateStatusItem(index, {
+      updateStatusItem(listEl, index, {
         status: 'downloading',
         message: message || 'Downloading…',
         progress: progress || 50,
       });
       break;
     case 'complete':
-      updateStatusItem(index, {
+      updateStatusItem(listEl, index, {
         status: 'success',
         message: title ? `Saved: ${title}` : 'Download complete!',
         progress: 100,
@@ -205,7 +255,7 @@ function handleDownloadEvent(event, total, onComplete) {
       }
       break;
     case 'error':
-      updateStatusItem(index, { status: 'error', message: message || 'Download failed', progress: 100 });
+      updateStatusItem(listEl, index, { status: 'error', message: message || 'Download failed', progress: 100 });
       onComplete();
       break;
     default:
@@ -213,6 +263,145 @@ function handleDownloadEvent(event, total, onComplete) {
   }
 }
 
+/* ── PLAYLIST: FETCH ── */
+async function fetchPlaylist() {
+  const url = playlistUrl.value.trim();
+  if (!url) {
+    showToast('Please enter a playlist URL.', 'error');
+    return;
+  }
+
+  const backendReady = await checkBackend();
+  if (!backendReady) {
+    showToast('Backend server is not running. Start it with: node server/server.js', 'error');
+    return;
+  }
+
+  fetchPlaylistBtn.disabled = true;
+  fetchPlaylistBtn.textContent = 'Fetching…';
+  playlistInfo.hidden = true;
+
+  try {
+    const response = await fetch(`${API_BASE}/api/playlist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to fetch playlist');
+    }
+
+    const data = await response.json();
+
+    if (data.error) {
+      throw new Error(data.error);
+    }
+
+    playlistTitle.textContent = data.title || 'Playlist';
+    playlistCount.textContent = `${data.videos.length} video${data.videos.length !== 1 ? 's' : ''}`;
+
+    playlistItems.innerHTML = '';
+    data.videos.forEach((video, i) => {
+      const item = document.createElement('div');
+      item.className = 'playlist-item';
+      item.innerHTML = `
+        <span class="playlist-item-num">${i + 1}</span>
+        <span class="playlist-item-title" title="${escapeHtml(video.title)}">${escapeHtml(video.title)}</span>
+        <span class="playlist-item-duration">${video.duration || ''}</span>
+      `;
+      playlistItems.appendChild(item);
+    });
+
+    currentPlaylistUrls = data.videos.map(v => v.url);
+    playlistInfo.hidden = false;
+    showToast(`Found ${data.videos.length} videos in playlist`, 'success');
+  } catch (error) {
+    showToast(error.message || 'Failed to fetch playlist', 'error');
+  } finally {
+    fetchPlaylistBtn.disabled = false;
+    fetchPlaylistBtn.innerHTML = '<span class="btn-icon-download">↻</span> Fetch Playlist';
+  }
+}
+
+/* ── PLAYLIST: DOWNLOAD ── */
+async function downloadPlaylist() {
+  if (currentPlaylistUrls.length === 0) {
+    showToast('No videos to download. Fetch a playlist first.', 'error');
+    return;
+  }
+
+  const backendReady = await checkBackend();
+  if (!backendReady) {
+    showToast('Backend server is not running.', 'error');
+    return;
+  }
+
+  isDownloading = true;
+  downloadPlaylistBtn.disabled = true;
+  clearPlaylistBtn.disabled = true;
+  fetchPlaylistBtn.disabled = true;
+
+  playlistStatusCard.hidden = false;
+  playlistStatusList.innerHTML = '';
+  playlistOverallProgress.textContent = `0 / ${currentPlaylistUrls.length}`;
+
+  currentPlaylistUrls.forEach((url, index) => {
+    playlistStatusList.appendChild(createStatusItem(url, index, playlistStatusList));
+  });
+
+  let completed = 0;
+
+  try {
+    const playlistName = playlistTitle.textContent || 'playlist';
+    const response = await fetch(`${API_BASE}/api/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ urls: currentPlaylistUrls, playlist: playlistName }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Download request failed');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const event = JSON.parse(line.slice(6));
+          handleDownloadEvent(playlistStatusList, event, currentPlaylistUrls.length, () => {
+            completed++;
+            playlistOverallProgress.textContent = `${completed} / ${currentPlaylistUrls.length}`;
+          });
+        } catch {
+          /* skip malformed events */
+        }
+      }
+    }
+  } catch (err) {
+    showToast(err.message || 'Something went wrong.', 'error');
+  } finally {
+    isDownloading = false;
+    downloadPlaylistBtn.disabled = false;
+    clearPlaylistBtn.disabled = false;
+    fetchPlaylistBtn.disabled = false;
+  }
+}
+
+/* ── EVENT LISTENERS ── */
 addLinkBtn.addEventListener('click', () => {
   linksContainer.appendChild(createLinkRow());
   renumberLinks();
@@ -229,11 +418,24 @@ clearAllBtn.addEventListener('click', () => {
 });
 
 downloadAllBtn.addEventListener('click', downloadAll);
+fetchPlaylistBtn.addEventListener('click', fetchPlaylist);
+downloadPlaylistBtn.addEventListener('click', downloadPlaylist);
+
+clearPlaylistBtn.addEventListener('click', () => {
+  if (isDownloading) return;
+  playlistUrl.value = '';
+  playlistInfo.hidden = true;
+  playlistStatusCard.hidden = true;
+  playlistStatusList.innerHTML = '';
+  playlistItems.innerHTML = '';
+  currentPlaylistUrls = [];
+});
 
 linksContainer.addEventListener('click', (e) => {
   if (e.target.classList.contains('remove-btn')) return;
 });
 
+/* ── PASTE HANDLER ── */
 document.addEventListener('paste', (e) => {
   const text = e.clipboardData.getData('text');
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
@@ -259,6 +461,7 @@ document.addEventListener('paste', (e) => {
   showToast(`Added ${linksContainer.children.length} link(s) from clipboard`);
 });
 
+/* ── BACKEND CHECK ON LOAD ── */
 checkBackend().then((ready) => {
   if (!ready) {
     showToast('Start the backend: node server/server.js', 'error');
