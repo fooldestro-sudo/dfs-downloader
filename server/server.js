@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 
-process.env.PATH = `${path.join(process.env.HOME, '.local', 'bin')}:${process.env.PATH}`;
+process.env.PATH = path.join(process.env.HOME, '.local', 'bin') + ':' + process.env.PATH;
 
 const app = express();
 const PORT = 3001;
@@ -20,10 +20,10 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, '..')));
 
 function findYtDlp() {
-  return new Promise((resolve) => {
-    const check = spawn('yt-dlp', ['--version']);
-    check.on('close', (code) => resolve(code === 0));
-    check.on('error', () => resolve(false));
+  return new Promise(function (resolve) {
+    var check = spawn('yt-dlp', ['--version']);
+    check.on('close', function (code) { resolve(code === 0); });
+    check.on('error', function () { resolve(false); });
   });
 }
 
@@ -31,14 +31,48 @@ function sanitizeDirName(name) {
   return name.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, ' ').trim().substring(0, 100);
 }
 
-function downloadWithProgress(url, index, send, outputDir) {
-  send({ type: 'start', index, message: 'Starting download…' });
+function detectPlatform(url) {
+  var lower = url.toLowerCase();
+  if (lower.includes('youtube.com') || lower.includes('youtu.be')) return 'YouTube';
+  if (lower.includes('spotify.com')) return 'Spotify';
+  if (lower.includes('soundcloud.com')) return 'SoundCloud';
+  if (lower.includes('tiktok.com') || lower.includes('vm.tiktok.com')) return 'TikTok';
+  if (lower.includes('instagram.com')) return 'Instagram';
+  if (lower.includes('facebook.com') || lower.includes('fb.watch')) return 'Facebook';
+  if (lower.includes('twitter.com') || lower.includes('x.com')) return 'X/Twitter';
+  if (lower.includes('vimeo.com')) return 'Vimeo';
+  if (lower.includes('dailymotion.com')) return 'Dailymotion';
+  if (lower.includes('twitch.tv')) return 'Twitch';
+  if (lower.includes('reddit.com')) return 'Reddit';
+  if (lower.includes('nicovideo.jp')) return 'NicoNico';
+  if (lower.includes('bilibili.com')) return 'Bilibili';
+  if (lower.includes('tumblr.com')) return 'Tumblr';
+  if (lower.includes('archive.org')) return 'Archive.org';
+  if (lower.includes('archivevideo.com')) return 'Archive.org';
+  if (lower.includes('dzen.ru')) return 'Dzen';
+  if (lower.includes('ok.ru')) return 'OK.ru';
+  if (lower.includes('vk.com') || lower.includes('vkvideo.ru')) return 'VK';
+  if (lower.includes('bitchute.com')) return 'BitChute';
+  if (lower.includes('rumble.com')) return 'Rumble';
+  if (lower.includes('odysee.com') || lower.includes('lbry.tv')) return 'Odysee/LBRY';
+  if (lower.includes('peertube')) return 'PeerTube';
+  if (lower.includes('streamable.com')) return 'Streamable';
+  if (lower.includes('mixcloud.com')) return 'Mixcloud';
+  if (lower.includes('bandcamp.com')) return 'Bandcamp';
+  if (lower.includes('deezer.com')) return 'Deezer';
+  if (lower.includes('piped.video') || lower.includes('piped.kavin.rocks')) return 'Piped (YouTube proxy)';
+  if (lower.includes('invidious')) return 'Invidious (YouTube proxy)';
+  return 'Unknown';
+}
 
-  const outTemplate = outputDir
+function downloadWithProgress(url, index, send, outputDir) {
+  send({ type: 'start', index, message: 'Starting download...' });
+
+  var outTemplate = outputDir
     ? path.join(outputDir, '%(title)s [%(id)s].%(ext)s')
     : path.join(DOWNLOADS_DIR, '%(title)s [%(id)s].%(ext)s');
 
-  const args = [
+  var args = [
     url,
     '-o', outTemplate,
     '--no-playlist',
@@ -48,87 +82,88 @@ function downloadWithProgress(url, index, send, outputDir) {
     '--merge-output-format', 'mp4',
   ];
 
-  return new Promise((resolve, reject) => {
-    const proc = spawn('yt-dlp', args);
-    let title = '';
-    let stderr = '';
+  return new Promise(function (resolve, reject) {
+    var proc = spawn('yt-dlp', args);
+    var title = '';
+    var stderr = '';
 
-    proc.stdout.on('data', (data) => {
-      const text = data.toString();
-      const lines = text.split('\n');
+    proc.stdout.on('data', function (data) {
+      var text = data.toString();
+      var lines = text.split('\n');
 
-      for (const line of lines) {
-        const pctMatch = line.match(/\[download\]\s+(\d+(?:\.\d+)?)%/);
+      for (var i = 0; i < lines.length; i++) {
+        var pctMatch = lines[i].match(/\[download\]\s+(\d+(?:\.\d+)?)%/);
         if (pctMatch) {
-          const progress = parseFloat(pctMatch[1]);
-          send({ type: 'progress', index, message: `Downloading… ${progress.toFixed(0)}%`, progress });
+          var progress = parseFloat(pctMatch[1]);
+          send({ type: 'progress', index: index, message: 'Downloading... ' + progress.toFixed(0) + '%', progress: progress });
         }
 
-        const destMatch = line.match(/\[download\] Destination: .+[\\/](.+)\.\w+/);
+        var destMatch = lines[i].match(/\[download\] Destination: .+[\\/](.+)\.\w+/);
         if (destMatch) title = destMatch[1];
       }
     });
 
-    proc.stderr.on('data', (data) => {
+    proc.stderr.on('data', function (data) {
       stderr += data.toString();
 
-      const mergeMatch = stderr.match(/\[Merger\] Merging formats into "(.+)"/);
+      var mergeMatch = stderr.match(/\[Merger\] Merging formats into "(.+)"/);
       if (mergeMatch) {
         title = path.basename(mergeMatch[1], path.extname(mergeMatch[1]));
-        send({ type: 'progress', index, message: 'Merging audio & video…', progress: 95 });
+        send({ type: 'progress', index: index, message: 'Merging audio & video...', progress: 95 });
       }
     });
 
-    proc.on('close', (code) => {
+    proc.on('close', function (code) {
       if (code === 0) {
-        send({ type: 'complete', index, title: title || 'video', progress: 100 });
-        resolve({ title });
+        send({ type: 'complete', index: index, title: title || 'video', progress: 100 });
+        resolve({ title: title });
       } else {
-        const errMsg = stderr.includes('ERROR:')
-          ? stderr.match(/ERROR: (.+)/)?.[1]?.trim() || 'Download failed'
-          : 'Download failed';
-        send({ type: 'error', index, message: errMsg });
+        var errMsg = 'Download failed';
+        if (stderr.includes('ERROR:')) {
+          var m = stderr.match(/ERROR: (.+)/);
+          if (m) errMsg = m[1].trim();
+        }
+        send({ type: 'error', index: index, message: errMsg });
         reject(new Error(errMsg));
       }
     });
 
-    proc.on('error', () => {
-      const msg = 'yt-dlp not installed. Run: pip install yt-dlp (or sudo apt install yt-dlp)';
-      send({ type: 'error', index, message: msg });
+    proc.on('error', function () {
+      var msg = 'yt-dlp not installed. Run: pip install yt-dlp (or sudo apt install yt-dlp)';
+      send({ type: 'error', index: index, message: msg });
       reject(new Error(msg));
     });
   });
 }
 
-/* ── HEALTH ── */
-app.get('/api/health', async (_req, res) => {
-  const hasYtDlp = await findYtDlp();
+app.get('/api/health', async function (_req, res) {
+  var hasYtDlp = await findYtDlp();
   res.json({
     status: 'ok',
     ytDlp: hasYtDlp,
     downloadsDir: DOWNLOADS_DIR,
-    name: 'DFS — Downloading For Society',
+    name: 'DFS - Downloading For Society',
   });
 });
 
-/* ── DOWNLOAD ── */
-app.post('/api/download', async (req, res) => {
-  const { urls, playlist } = req.body;
+app.post('/api/download', async function (req, res) {
+  var urls = req.body.urls;
+  var playlist = req.body.playlist;
 
   if (!Array.isArray(urls) || urls.length === 0) {
     return res.status(400).json({ error: 'No URLs provided' });
   }
 
-  const hasYtDlp = await findYtDlp();
+  var hasYtDlp = await findYtDlp();
   if (!hasYtDlp) {
     return res.status(503).json({
       error: 'yt-dlp is not installed. Install with: pip install yt-dlp',
     });
   }
 
-  let outputDir = DOWNLOADS_DIR;
+  var outputDir = DOWNLOADS_DIR;
   if (playlist) {
-    const folderName = sanitizeDirName(playlist);
+    var folderName = sanitizeDirName(playlist);
     outputDir = path.join(DOWNLOADS_DIR, folderName);
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
@@ -138,17 +173,17 @@ app.post('/api/download', async (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
+    'Connection': 'keep-alive',
   });
 
-  const send = (data) => {
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
-  };
+  function send(data) {
+    res.write('data: ' + JSON.stringify(data) + '\n\n');
+  }
 
-  for (let i = 0; i < urls.length; i++) {
+  for (var i = 0; i < urls.length; i++) {
     try {
       await downloadWithProgress(urls[i], i, send, playlist ? outputDir : null);
-    } catch {
+    } catch (e) {
       /* error already sent via SSE */
     }
   }
@@ -156,72 +191,120 @@ app.post('/api/download', async (req, res) => {
   res.end();
 });
 
-/* ── PLAYLIST ── */
-app.post('/api/playlist', async (req, res) => {
-  const { url } = req.body;
+app.post('/api/playlist', async function (req, res) {
+  var url = req.body.url;
 
-  if (!url) {
+  if (!url || !url.trim()) {
     return res.status(400).json({ error: 'No URL provided' });
   }
 
-  const hasYtDlp = await findYtDlp();
+  url = url.trim();
+
+  var hasYtDlp = await findYtDlp();
   if (!hasYtDlp) {
     return res.status(503).json({
       error: 'yt-dlp is not installed. Install with: pip install yt-dlp',
     });
   }
 
-  const args = [
+  var platform = detectPlatform(url);
+
+  var args = [
     '--flat-playlist',
     '--print', '%(title)s|||%(duration_string)s|||%(url)s',
     '--no-warnings',
+    '--no-check-certificates',
     url,
   ];
 
-  const proc = spawn('yt-dlp', args);
-  let stdout = '';
-  let stderr = '';
+  var proc = spawn('yt-dlp', args);
+  var stdout = '';
+  var stderr = '';
 
-  proc.stdout.on('data', (data) => { stdout += data.toString(); });
-  proc.stderr.on('data', (data) => { stderr += data.toString(); });
+  proc.stdout.on('data', function (data) { stdout += data.toString(); });
+  proc.stderr.on('data', function (data) { stderr += data.toString(); });
 
-  proc.on('close', (code) => {
+  proc.on('close', function (code) {
     if (code !== 0) {
-      const errMsg = stderr.includes('ERROR:')
-        ? stderr.match(/ERROR: (.+)/)?.[1]?.trim() || 'Failed to fetch playlist'
-        : 'Failed to fetch playlist';
-      return res.status(500).json({ error: errMsg });
+      var errMsg = 'Failed to fetch playlist';
+      if (stderr.includes('ERROR:')) {
+        var m = stderr.match(/ERROR: (.+)/);
+        if (m) errMsg = m[1].trim();
+      }
+
+      var singleVideoArgs = ['--print', 'title|||duration_string|||webpage_url', '--no-warnings', '--no-check-certificates', url];
+      var singleProc = spawn('yt-dlp', singleVideoArgs);
+      var singleStdout = '';
+      var singleStderr = '';
+
+      singleProc.stdout.on('data', function (d) { singleStdout += d.toString(); });
+      singleProc.stderr.on('data', function (d) { singleStderr += d.toString(); });
+
+      singleProc.on('close', function (singleCode) {
+        if (singleCode === 0 && singleStdout.trim()) {
+          var parts = singleStdout.trim().split('|||');
+          var video = {
+            title: parts[0] || 'Untitled',
+            duration: parts[1] || '',
+            url: parts[2] || url,
+          };
+          return res.json({
+            title: video.title + ' (single video)',
+            videos: [video],
+            platform: platform,
+            isSingleVideo: true,
+          });
+        }
+
+        return res.status(500).json({ error: errMsg });
+      });
+      return;
     }
 
-    const lines = stdout.split('\n').filter(l => l.trim());
-    const videos = lines.map(line => {
-      const parts = line.split('|||');
-      return {
-        title: parts[0] || 'Untitled',
-        duration: parts[1] || '',
-        url: parts[2] || '',
-      };
-    }).filter(v => v.url);
+    var lines = stdout.split('\n').filter(function (l) { return l.trim(); });
+    var videos = [];
 
-    let title = 'Playlist';
-    try {
-      const titleProc = spawn('yt-dlp', ['--playlist-items', '0', '--print', '%(playlist_title)s', '--no-warnings', url]);
-      let titleOut = '';
-      titleProc.stdout.on('data', (d) => { titleOut += d.toString(); });
-      titleProc.on('close', () => {
-        const t = titleOut.trim();
-        if (t && !t.includes('ERROR')) title = t;
-        res.json({ title, videos });
+    for (var i = 0; i < lines.length; i++) {
+      var parts = lines[i].split('|||');
+      if (parts[2] && parts[2].trim()) {
+        videos.push({
+          title: parts[0] || 'Untitled',
+          duration: parts[1] || '',
+          url: parts[2].trim(),
+        });
+      }
+    }
+
+    if (videos.length === 0) {
+      return res.status(400).json({
+        error: 'No videos found at this URL. It may not be a playlist or supported format.',
       });
-    } catch {
-      res.json({ title, videos });
+    }
+
+    var title = 'Playlist';
+
+    try {
+      var titleProc = spawn('yt-dlp', ['--playlist-items', '0', '--print', '%(playlist_title)s', '--no-warnings', '--no-check-certificates', url]);
+      var titleOut = '';
+
+      titleProc.stdout.on('data', function (d) { titleOut += d.toString(); });
+      titleProc.on('close', function () {
+        var t = titleOut.trim();
+        if (t && !t.includes('ERROR')) {
+          title = t;
+        }
+        res.json({ title: title, videos: videos, platform: platform, isSingleVideo: false });
+      });
+    } catch (e) {
+      res.json({ title: title, videos: videos, platform: platform, isSingleVideo: false });
     }
   });
 });
 
-/* ── START ── */
-app.listen(PORT, () => {
-  console.log(`\n  DFS — Downloading For Society`);
-  console.log(`  Backend running on http://localhost:${PORT}`);
-  console.log(`  Downloads saved to: ${DOWNLOADS_DIR}\n`);
+app.listen(PORT, function () {
+  console.log('');
+  console.log('  DFS - Downloading For Society');
+  console.log('  Backend running on http://localhost:' + PORT);
+  console.log('  Downloads saved to: ' + DOWNLOADS_DIR);
+  console.log('');
 });

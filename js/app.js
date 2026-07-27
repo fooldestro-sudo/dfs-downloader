@@ -271,14 +271,8 @@ async function fetchPlaylist() {
     return;
   }
 
-  const backendReady = await checkBackend();
-  if (!backendReady) {
-    showToast('Backend server is not running. Start it with: node server/server.js', 'error');
-    return;
-  }
-
   fetchPlaylistBtn.disabled = true;
-  fetchPlaylistBtn.textContent = 'Fetching…';
+  fetchPlaylistBtn.innerHTML = '<span class="btn-icon-download">&#8635;</span> Fetching...';
   playlistInfo.hidden = true;
 
   try {
@@ -299,8 +293,10 @@ async function fetchPlaylist() {
       throw new Error(data.error);
     }
 
-    playlistTitle.textContent = data.title || 'Playlist';
-    playlistCount.textContent = `${data.videos.length} video${data.videos.length !== 1 ? 's' : ''}`;
+    const platformBadge = data.platform ? ` [${data.platform}]` : '';
+    const label = data.isSingleVideo ? 'Video' : 'Playlist';
+    playlistTitle.textContent = (data.title || label) + platformBadge;
+    playlistCount.textContent = `${data.videos.length} ${data.isSingleVideo ? 'video' : 'videos'}`;
 
     playlistItems.innerHTML = '';
     data.videos.forEach((video, i) => {
@@ -316,12 +312,17 @@ async function fetchPlaylist() {
 
     currentPlaylistUrls = data.videos.map(v => v.url);
     playlistInfo.hidden = false;
-    showToast(`Found ${data.videos.length} videos in playlist`, 'success');
+
+    if (data.isSingleVideo) {
+      showToast('Detected single video from ' + (data.platform || 'source'), 'success');
+    } else {
+      showToast(`Found ${data.videos.length} videos (${data.platform || 'unknown platform'})`, 'success');
+    }
   } catch (error) {
     showToast(error.message || 'Failed to fetch playlist', 'error');
   } finally {
     fetchPlaylistBtn.disabled = false;
-    fetchPlaylistBtn.innerHTML = '<span class="btn-icon-download">↻</span> Fetch Playlist';
+    fetchPlaylistBtn.innerHTML = '<span class="btn-icon-download">&#8635;</span> Fetch Playlist';
   }
 }
 
