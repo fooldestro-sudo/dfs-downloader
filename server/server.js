@@ -1,15 +1,15 @@
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
-const { spawn } = require('child_process');
+var express = require('express');
+var cors = require('cors');
+var path = require('path');
+var fs = require('fs');
+var spawn = require('child_process').spawn;
 
 process.env.PATH = path.join(process.env.HOME, '.local', 'bin') + ':' + process.env.PATH;
 
-const app = express();
-const PORT = 3001;
+var app = express();
+var PORT = 3001;
 
-const DOWNLOADS_DIR = path.join(process.env.HOME, 'Downloads', 'DFS');
+var DOWNLOADS_DIR = path.join(process.env.HOME, 'Downloads', 'DFS');
 
 if (!fs.existsSync(DOWNLOADS_DIR)) {
   fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
@@ -44,29 +44,65 @@ function detectPlatform(url) {
   if (lower.includes('dailymotion.com')) return 'Dailymotion';
   if (lower.includes('twitch.tv')) return 'Twitch';
   if (lower.includes('reddit.com')) return 'Reddit';
-  if (lower.includes('nicovideo.jp')) return 'NicoNico';
   if (lower.includes('bilibili.com')) return 'Bilibili';
-  if (lower.includes('tumblr.com')) return 'Tumblr';
-  if (lower.includes('archive.org')) return 'Archive.org';
-  if (lower.includes('archivevideo.com')) return 'Archive.org';
-  if (lower.includes('dzen.ru')) return 'Dzen';
   if (lower.includes('ok.ru')) return 'OK.ru';
   if (lower.includes('vk.com') || lower.includes('vkvideo.ru')) return 'VK';
   if (lower.includes('bitchute.com')) return 'BitChute';
   if (lower.includes('rumble.com')) return 'Rumble';
   if (lower.includes('odysee.com') || lower.includes('lbry.tv')) return 'Odysee/LBRY';
-  if (lower.includes('peertube')) return 'PeerTube';
-  if (lower.includes('streamable.com')) return 'Streamable';
-  if (lower.includes('mixcloud.com')) return 'Mixcloud';
   if (lower.includes('bandcamp.com')) return 'Bandcamp';
   if (lower.includes('deezer.com')) return 'Deezer';
-  if (lower.includes('piped.video') || lower.includes('piped.kavin.rocks')) return 'Piped (YouTube proxy)';
-  if (lower.includes('invidious')) return 'Invidious (YouTube proxy)';
-  return 'Unknown';
+  if (lower.includes('mixcloud.com')) return 'Mixcloud';
+  if (lower.includes('archive.org')) return 'Archive.org';
+  if (lower.includes('nicovideo.jp')) return 'NicoNico';
+  if (lower.includes('dzen.ru')) return 'Dzen';
+  return 'Other';
+}
+
+function runYtDlp(args, timeout) {
+  return new Promise(function (resolve) {
+    var proc = spawn('yt-dlp', args);
+    var stdout = '';
+    var stderr = '';
+    var timer = null;
+
+    if (timeout) {
+      timer = setTimeout(function () {
+        proc.kill('SIGKILL');
+      }, timeout);
+    }
+
+    proc.stdout.on('data', function (d) { stdout += d.toString(); });
+    proc.stderr.on('data', function (d) { stderr += d.toString(); });
+    proc.on('close', function (code) {
+      if (timer) clearTimeout(timer);
+      resolve({ code: code, stdout: stdout, stderr: stderr });
+    });
+    proc.on('error', function () {
+      if (timer) clearTimeout(timer);
+      resolve({ code: 1, stdout: '', stderr: 'Failed to run yt-dlp' });
+    });
+  });
+}
+
+function parseVideoList(raw) {
+  var lines = raw.split('\n').filter(function (l) { return l.trim(); });
+  var videos = [];
+  for (var i = 0; i < lines.length; i++) {
+    var parts = lines[i].split('|||');
+    if (parts.length >= 3 && parts[2] && parts[2].trim()) {
+      videos.push({
+        title: parts[0] || 'Untitled',
+        duration: parts[1] || '',
+        url: parts[2].trim(),
+      });
+    }
+  }
+  return videos;
 }
 
 function downloadWithProgress(url, index, send, outputDir) {
-  send({ type: 'start', index, message: 'Starting download...' });
+  send({ type: 'start', index: index, message: 'Starting download...' });
 
   var outTemplate = outputDir
     ? path.join(outputDir, '%(title)s [%(id)s].%(ext)s')
@@ -78,6 +114,7 @@ function downloadWithProgress(url, index, send, outputDir) {
     '--no-playlist',
     '--newline',
     '--progress',
+    '--no-check-certificates',
     '-f', 'bestvideo+bestaudio/best',
     '--merge-output-format', 'mp4',
   ];
@@ -184,7 +221,6 @@ app.post('/api/download', async function (req, res) {
     try {
       await downloadWithProgress(urls[i], i, send, playlist ? outputDir : null);
     } catch (e) {
-      /* error already sent via SSE */
     }
   }
 
@@ -208,97 +244,50 @@ app.post('/api/playlist', async function (req, res) {
   }
 
   var platform = detectPlatform(url);
+  var baseArgs = ['--print', '%(title)s|||%(duration_string)s|||%(url)s', '--no-warnings', '--no-check-certificates'];
 
-  var args = [
-    '--flat-playlist',
-    '--print', '%(title)s|||%(duration_string)s|||%(url)s',
-    '--no-warnings',
-    '--no-check-certificates',
-    url,
-  ];
-
-  var proc = spawn('yt-dlp', args);
-  var stdout = '';
-  var stderr = '';
-
-  proc.stdout.on('data', function (data) { stdout += data.toString(); });
-  proc.stderr.on('data', function (data) { stderr += data.toString(); });
-
-  proc.on('close', function (code) {
-    if (code !== 0) {
-      var errMsg = 'Failed to fetch playlist';
-      if (stderr.includes('ERROR:')) {
-        var m = stderr.match(/ERROR: (.+)/);
-        if (m) errMsg = m[1].trim();
-      }
-
-      var singleVideoArgs = ['--print', 'title|||duration_string|||webpage_url', '--no-warnings', '--no-check-certificates', url];
-      var singleProc = spawn('yt-dlp', singleVideoArgs);
-      var singleStdout = '';
-      var singleStderr = '';
-
-      singleProc.stdout.on('data', function (d) { singleStdout += d.toString(); });
-      singleProc.stderr.on('data', function (d) { singleStderr += d.toString(); });
-
-      singleProc.on('close', function (singleCode) {
-        if (singleCode === 0 && singleStdout.trim()) {
-          var parts = singleStdout.trim().split('|||');
-          var video = {
-            title: parts[0] || 'Untitled',
-            duration: parts[1] || '',
-            url: parts[2] || url,
-          };
-          return res.json({
-            title: video.title + ' (single video)',
-            videos: [video],
-            platform: platform,
-            isSingleVideo: true,
-          });
-        }
-
-        return res.status(500).json({ error: errMsg });
-      });
-      return;
+  var attempt1 = await runYtDlp(baseArgs.concat(['--flat-playlist', url]), 30000);
+  if (attempt1.code === 0) {
+    var videos = parseVideoList(attempt1.stdout);
+    if (videos.length > 0) {
+      var titleResult = await runYtDlp(['--playlist-items', '0', '--print', '%(playlist_title)s', '--no-warnings', '--no-check-certificates', url], 10000);
+      var title = 'Playlist';
+      var t = titleResult.stdout.trim();
+      if (t && !t.includes('ERROR')) title = t;
+      return res.json({ title: title, videos: videos, platform: platform, isSingleVideo: false });
     }
+  }
 
-    var lines = stdout.split('\n').filter(function (l) { return l.trim(); });
-    var videos = [];
-
-    for (var i = 0; i < lines.length; i++) {
-      var parts = lines[i].split('|||');
-      if (parts[2] && parts[2].trim()) {
-        videos.push({
-          title: parts[0] || 'Untitled',
-          duration: parts[1] || '',
-          url: parts[2].trim(),
-        });
-      }
+  var attempt2 = await runYtDlp(baseArgs.concat(['--flat-playlist', '--no-playlist', url]), 30000);
+  if (attempt2.code === 0) {
+    var videos2 = parseVideoList(attempt2.stdout);
+    if (videos2.length > 0) {
+      return res.json({ title: videos2[0].title || 'Playlist', videos: videos2, platform: platform, isSingleVideo: videos2.length === 1 });
     }
+  }
 
-    if (videos.length === 0) {
-      return res.status(400).json({
-        error: 'No videos found at this URL. It may not be a playlist or supported format.',
-      });
+  var attempt3 = await runYtDlp(baseArgs.concat([url]), 30000);
+  if (attempt3.code === 0) {
+    var videos3 = parseVideoList(attempt3.stdout);
+    if (videos3.length > 0) {
+      return res.json({ title: videos3.length === 1 ? videos3[0].title + ' (single video)' : 'Playlist', videos: videos3, platform: platform, isSingleVideo: videos3.length === 1 });
     }
+  }
 
-    var title = 'Playlist';
+  var attempt4 = await runYtDlp(['--print', 'title|||duration_string|||webpage_url', '--no-warnings', '--no-check-certificates', url], 15000);
+  if (attempt4.code === 0 && attempt4.stdout.trim()) {
+    var parts = attempt4.stdout.trim().split('|||');
+    var video = { title: parts[0] || 'Untitled', duration: parts[1] || '', url: parts[2] || url };
+    return res.json({ title: video.title + ' (single video)', videos: [video], platform: platform, isSingleVideo: true });
+  }
 
-    try {
-      var titleProc = spawn('yt-dlp', ['--playlist-items', '0', '--print', '%(playlist_title)s', '--no-warnings', '--no-check-certificates', url]);
-      var titleOut = '';
+  var finalError = 'This URL could not be processed. The site may not be supported for playlist fetching. Try copying individual video URLs and pasting them in the Single Download tab.';
+  if (attempt1.stderr && attempt1.stderr.includes('ERROR:')) {
+    var m = attempt1.stderr.match(/ERROR: (.+)/);
+    if (m) finalError = m[1].trim() + '. Try copying individual video URLs and pasting them in the Single Download tab.';
+  }
 
-      titleProc.stdout.on('data', function (d) { titleOut += d.toString(); });
-      titleProc.on('close', function () {
-        var t = titleOut.trim();
-        if (t && !t.includes('ERROR')) {
-          title = t;
-        }
-        res.json({ title: title, videos: videos, platform: platform, isSingleVideo: false });
-      });
-    } catch (e) {
-      res.json({ title: title, videos: videos, platform: platform, isSingleVideo: false });
-    }
-  });
+  return res.status(500).json({ error: finalError });
 });
 
 app.listen(PORT, function () {
