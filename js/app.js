@@ -1,4 +1,7 @@
-const API_BASE = 'http://localhost:3001';
+// Same-origin in production (backend serves this file), localhost:3001 for local dev.
+const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ? 'http://localhost:3001'
+  : '';
 
 /* ── DOM REFS ── */
 const linksContainer = document.getElementById('linksContainer');

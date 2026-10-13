@@ -7,7 +7,7 @@ var spawn = require('child_process').spawn;
 process.env.PATH = path.join(process.env.HOME, '.local', 'bin') + ':' + process.env.PATH;
 
 var app = express();
-var PORT = 3001;
+var PORT = process.env.PORT || 3001;
 
 var DOWNLOADS_DIR = path.join(process.env.HOME, 'Downloads', 'DFS');
 
