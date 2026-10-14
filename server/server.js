@@ -290,10 +290,12 @@ app.post('/api/playlist', async function (req, res) {
   return res.status(500).json({ error: finalError });
 });
 
-app.listen(PORT, function () {
+var HOST = process.env.HOST || '0.0.0.0';
+
+app.listen(PORT, HOST, function () {
   console.log('');
   console.log('  DFS - Downloading For Society');
-  console.log('  Backend running on http://localhost:' + PORT);
+  console.log('  Backend running on http://' + HOST + ':' + PORT);
   console.log('  Downloads saved to: ' + DOWNLOADS_DIR);
   console.log('');
 });
